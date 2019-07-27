@@ -8,6 +8,7 @@ hostname="host"
 user_name="test"
 continent_city="Atlanta"
 swap_size="8"
+grub_mode="uefi"
 
 # Setup bash colors here
 RESTORE='\033[0m'
@@ -40,9 +41,6 @@ timedatectl set-ntp true
 [  -z "$continent_city" ] && echo "Empty: Yes" || echo "Empty: No"
 [  -z "$swap_size" ] && echo "Empty: Yes" || echo "Empty: No"
 
-# TODO: Does this matter to install?  
-# UEFI vs BIOS - consult your mobo
-
 
 # Query for disk to install to
 lsblk
@@ -57,29 +55,74 @@ then
   exit 1
 fi
 
+
 # Ask if the user wants to shred now.  It's best to shred, but whatevs
 # if the script hasn't imploded run shred on the disk
 # gotta go fast - single pass with /dev/urandom
 #shred -v --random-source=/dev/urandom -n1 $DISK #uncomment to shred for safety
 
-# The sed script strips off all the comments so that we can 
-# document what we're doing in-line with the actual commands
-# Note that a blank line (commented as "defualt" will send a empty
-# line terminated with a newline to take the fdisk default.
-sed -e 's/\s*\([\+0-9a-zA-Z]*\).*/\1/' << EOF | fdisk $DISK
-  g # clear the in memory partition table - create new empty GPT partition table
-  n # new partition
-  1 # partition number 1
-    # default - start at beginning of disk 
-  +100M # 100 MB boot parttion
-  n # new partition
-  2 # partion number 2
-    # default, start immediately after preceding partition
-    # default, extend partition to end of disk
-  p # print the in-memory partition table
-  w # write the partition table
-EOF
-#TODO: add swap space partition for later sleep support
+# UEFI vs BIOS - consult your mobo docs - rtfm
+efibootmgr
+if [ $? -eq 2 ]; then
+    echo "$RED No UEFI/EFI support.  Falling back to BIOS. $RESTORE"
+    bios_mode()
+elif [ $? -eq 1 ]; then
+    echo "$GREEN UEFI/EFI supported.  Pushing forward. $RESTORE"
+    uefi_mode()
+fi
+
+uefi_mode(){
+  echo "Starting UEFI MODE"
+  read -p "Debugging Pause"
+  # The sed script strips off all the comments so that we can 
+  # document what we're doing in-line with the actual commands
+  # Note that a blank line (commented as "defualt" will send a empty
+  # line terminated with a newline to take the fdisk default.
+  sed -e 's/\s*\([\+0-9a-zA-Z]*\).*/\1/' << EOF | fdisk $DISK
+    g # clear the in memory partition table - create new empty GPT partition table
+    n # new partition
+    1 # partition number 1
+      # default - start at beginning of disk 
+    +100M # 100 MB boot parttion
+    n # new partition
+    2 # partion number 2
+      # default, start immediately after preceding partition
+      # default, extend partition to end of disk
+    p # print the in-memory partition table
+    w # write the partition table
+  EOF
+  #TODO: add swap space partition for later sleep support
+}
+
+bios_mode(){
+  echo "Starting BIOS MODE"
+  read -p "Debugging Pause"
+  # to create the partitions programatically (rather than manually)
+  # we're going to simulate the manual input to fdisk
+  # The sed script strips off all the comments so that we can 
+  # document what we're doing in-line with the actual commands
+  # Note that a blank line (commented as "defualt" will send a empty
+  # line terminated with a newline to take the fdisk default.
+  sed -e 's/\s*\([\+0-9a-zA-Z]*\).*/\1/' << EOF | fdisk ${TGTDEV}
+    o # clear the in memory partition table
+    n # new partition
+    p # primary partition
+    1 # partition number 1
+      # default - start at beginning of disk 
+    +100M # 100 MB boot parttion
+    n # new partition
+    p # primary partition
+    2 # partion number 2
+      # default, start immediately after preceding partition
+      # default, extend partition to end of disk
+    a # make a partition bootable
+    1 # bootable partition is partition 1 -- /dev/sda1
+    p # print the in-memory partition table
+    w # write the partition table
+  EOF
+  #TODO: add swap space partition for later sleep support
+}
+
 
 # create variables for the partitions
 DISK1="$DISK""1"
