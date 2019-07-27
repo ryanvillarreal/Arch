@@ -1,70 +1,101 @@
 #!/bin/bash
 
 # Setup variables here.
-encryption_passphrase=""
-root_password=""
-user_password=""
-hostname=""
-user_name=""
-continent_city=""
+encryption_passphrase="password"
+root_password="password"
+user_password="password"
+hostname="host"
+user_name="test"
+continent_city="Atlanta"
 swap_size="8"
 
 # Setup bash colors here
 RESTORE='\033[0m'
-
 RED='\033[00;31m'
 GREEN='\033[00;32m'
-YELLOW='\033[00;33m'
-BLUE='\033[00;34m'
-PURPLE='\033[00;35m'
-CYAN='\033[00;36m'
-LIGHTGRAY='\033[00;37m'
-
-LRED='\033[01;31m'
-LGREEN='\033[01;32m'
-LYELLOW='\033[01;33m'
-LBLUE='\033[01;34m'
-LPURPLE='\033[01;35m'
-LCYAN='\033[01;36m'
-WHITE='\033[01;37m'
 
 # Check Internet connection in order: ipv4 --> dns --> 
 if ping -q -c 1 -W 1 8.8.8.8 >/dev/null; then
   echo "IPv4 is up"
 else
-  echo -e "{$RED} IPv4 is down {$RESTORE}"  # end script here?  or prompt for connection?
+  echo -e "$RED IPv4 is down $RESTORE"  # end script here?  or prompt for connection?
 fi
 if ping -q -c 1 -W 1 google.com >/dev/null; then
   echo "The network is up"
 else
-  echo -e "{$RED} The network is down {$RESTORE}" # end script here?  or prompt for connection?
+  echo -e "$RED The network is down $RESTORE" # end script here?  or prompt for connection?
 fi
 
 # need to update the clock first.
 echo "Updating system clock"
 timedatectl set-ntp true
 
-# Ask about boot type
-# UEFI vs Bios
-# I think this will matter later on.
+# TODO:
+# check to see if global variables are emtpy.  If they are prompt for info
+[  -z "$encryption_passphrase" ] && echo "Empty: Yes" || echo "Empty: No"
+[  -z "$root_password" ] && echo "Empty: Yes" || echo "Empty: No"
+[  -z "$user_password" ] && echo "Empty: Yes" || echo "Empty: No"
+[  -z "$hostname" ] && echo "Empty: Yes" || echo "Empty: No"
+[  -z "$user_name" ] && echo "Empty: Yes" || echo "Empty: No"
+[  -z "$continent_city" ] && echo "Empty: Yes" || echo "Empty: No"
+[  -z "$swap_size" ] && echo "Empty: Yes" || echo "Empty: No"
+
+# TODO: Does this matter to install?  
+# UEFI vs BIOS - consult your mobo
+
 
 # Query for disk to install to
 lsblk
-echo -e "{$RED} Selecting this will erase everything from the drive {$RESTORE}"
-echo -e "{$GREEN} Do not enter the full /dev/sdX - only sdX {$RESTORE}"
+echo -e "$RED Selecting this will erase everything from the drive $RESTORE"
+echo -e "$GREEN Enter the full /dev/sdX - not only sdX $RESTORE"
 read -p "Enter disk to install to: "  DISK
+echo -e "$RED wiping: $DISK, are you sure?!?! $RESTORE"
+read -p "[Y/y/n]" -n 1 -r
+echo
+if [[ ! $REPLY =~ ^[Yy]$ ]]
+then
+  exit 1
+fi
+# if the script hasn't imploded run shred on the disk
+# gotta go fast - single pass with /dev/urandom
+shred -v --random-source=/dev/urandom -n1 $DISK
 
+# The sed script strips off all the comments so that we can 
+# document what we're doing in-line with the actual commands
+# Note that a blank line (commented as "defualt" will send a empty
+# line terminated with a newline to take the fdisk default.
+sed -e 's/\s*\([\+0-9a-zA-Z]*\).*/\1/' << EOF | fdisk $DISK
+  g # clear the in memory partition table - create new empty GPT partition table
+  n # new partition
+  p # primary partition
+  1 # partition number 1
+    # default - start at beginning of disk 
+  +100M # 100 MB boot parttion
+  n # new partition
+  2 # partion number 2
+    # default, start immediately after preceding partition
+    # default, extend partition to end of disk
+  1 # bootable partition is partition 1 -- /dev/sda1
+  p # print the in-memory partition table
+  w # write the partition table
+EOF
+#TODO: add swap space partition for later sleep support
 
-echo "Creating partition tables"
-printf "n\n1\n4096\n+512M\nef00\nw\ny\n" | gdisk $DISK
-printf "n\n2\n\n\n8e00\nw\ny\n" | gdisk $DISK
+# create variables for the partitions
+DISK1="$DISK""1"
+DISK2="$DISK""2"
 
-echo "Zeroing partitions"
-cat /dev/zero > /dev/$DISK1
-cat /dev/zero > /dev/$DISK2
+# Throws an error message saying no space left.  I think it's recommended not to do this anymore. 
+clea#echo "Zeroing partitions"
+#cat /dev/zero > /dev/$DISK1
+#cat /dev/zero > /dev/$DISK2
 
 echo "Building EFI filesystem"
-yes | mkfs.fat -F32 /dev/$DISK1
+yes | mkfs.fat -F32 $DISK1
+
+# temp pause for debugging
+fdisk -l
+read -p "Pause, press enter to continue"
 
 echo "Setting up cryptographic volume"
 printf "%s" "$encryption_passphrase" | cryptsetup -c aes-xts-plain64 -h sha512 -s 512 --use-random --type luks2 --label LVMPART luksFormat /dev/$DISK2
@@ -85,6 +116,10 @@ mount /dev/mapper/Arch-root /mnt
 mkdir /mnt/boot
 mount /dev/$DISK1 /mnt/boot
 swapon /dev/mapper/Arch-swap
+
+# temp pause for debugging
+fdisk -l
+read -p "Pause, press enter to continue"
 
 echo "Installing Arch Linux"
 yes '' | pacstrap /mnt base base-devel intel-ucode networkmanager wget reflector
