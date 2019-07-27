@@ -91,7 +91,8 @@ if [ $? -eq 2 ]; then
       p # print the in-memory partition table
       w # write the partition table
     EOF
-elif [ $? -eq 1 ]; then
+fi
+if [ $? -eq 1 ]; then
     echo "$GREEN UEFI/EFI supported.  Pushing forward. $RESTORE"
     echo "Starting UEFI MODE"
     read -p "Debugging Pause"
