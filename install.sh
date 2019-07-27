@@ -56,9 +56,11 @@ if [[ ! $REPLY =~ ^[Yy]$ ]]
 then
   exit 1
 fi
+
+# Ask if the user wants to shred now.  It's best to shred, but whatevs
 # if the script hasn't imploded run shred on the disk
 # gotta go fast - single pass with /dev/urandom
-shred -v --random-source=/dev/urandom -n1 $DISK
+#shred -v --random-source=/dev/urandom -n1 $DISK #uncomment to shred for safety
 
 # The sed script strips off all the comments so that we can 
 # document what we're doing in-line with the actual commands
@@ -67,7 +69,6 @@ shred -v --random-source=/dev/urandom -n1 $DISK
 sed -e 's/\s*\([\+0-9a-zA-Z]*\).*/\1/' << EOF | fdisk $DISK
   g # clear the in memory partition table - create new empty GPT partition table
   n # new partition
-  p # primary partition
   1 # partition number 1
     # default - start at beginning of disk 
   +100M # 100 MB boot parttion
@@ -75,7 +76,6 @@ sed -e 's/\s*\([\+0-9a-zA-Z]*\).*/\1/' << EOF | fdisk $DISK
   2 # partion number 2
     # default, start immediately after preceding partition
     # default, extend partition to end of disk
-  1 # bootable partition is partition 1 -- /dev/sda1
   p # print the in-memory partition table
   w # write the partition table
 EOF
@@ -85,11 +85,6 @@ EOF
 DISK1="$DISK""1"
 DISK2="$DISK""2"
 
-# Throws an error message saying no space left.  I think it's recommended not to do this anymore. 
-clea#echo "Zeroing partitions"
-#cat /dev/zero > /dev/$DISK1
-#cat /dev/zero > /dev/$DISK2
-
 echo "Building EFI filesystem"
 yes | mkfs.fat -F32 $DISK1
 
@@ -98,8 +93,8 @@ fdisk -l
 read -p "Pause, press enter to continue"
 
 echo "Setting up cryptographic volume"
-printf "%s" "$encryption_passphrase" | cryptsetup -c aes-xts-plain64 -h sha512 -s 512 --use-random --type luks2 --label LVMPART luksFormat /dev/$DISK2
-printf "%s" "$encryption_passphrase" | cryptsetup luksOpen /dev/$DISK2 cryptoVols
+printf "%s" "$encryption_passphrase" | cryptsetup -c aes-xts-plain64 -h sha512 -s 512 --use-random --type luks2 --label LVMPART luksFormat $DISK2
+printf "%s" "$encryption_passphrase" | cryptsetup luksOpen $DISK2 cryptoVols
 
 echo "Setting up LVM"
 pvcreate /dev/mapper/cryptoVols
