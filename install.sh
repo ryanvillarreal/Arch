@@ -91,6 +91,7 @@ if [ $? -eq 2 ]; then
       p # print the in-memory partition table
       w # write the partition table
     EOF
+    
 fi
 if [ $? -eq 1 ]; then
     echo "$GREEN UEFI/EFI supported.  Pushing forward. $RESTORE"
@@ -113,6 +114,7 @@ if [ $? -eq 1 ]; then
       p # print the in-memory partition table
       w # write the partition table
     EOF
+    
 fi
 
 
