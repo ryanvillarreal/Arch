@@ -86,11 +86,7 @@ DISK1="$DISK""1"
 DISK2="$DISK""2"
 
 echo "Building EFI filesystem"
-yes | mkfs.fat -F32 $DISK1
-
-# temp pause for debugging
-fdisk -l
-read -p "Pause, press enter to continue"
+yes '' | mkfs.fat -F32 $DISK1
 
 echo "Setting up cryptographic volume"
 printf "%s" "$encryption_passphrase" | cryptsetup -c aes-xts-plain64 -h sha512 -s 512 --use-random --type luks2 --label LVMPART luksFormat $DISK2
@@ -109,12 +105,8 @@ yes | mkfs.ext4 /dev/mapper/Arch-root
 echo "Mounting root/boot and enabling swap"
 mount /dev/mapper/Arch-root /mnt
 mkdir /mnt/boot
-mount /dev/$DISK1 /mnt/boot
+mount $DISK1 /mnt/boot
 swapon /dev/mapper/Arch-swap
-
-# temp pause for debugging
-fdisk -l
-read -p "Pause, press enter to continue"
 
 echo "Installing Arch Linux"
 yes '' | pacstrap /mnt base base-devel intel-ucode networkmanager wget reflector
